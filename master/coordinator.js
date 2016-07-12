@@ -23,56 +23,10 @@ app.get('/', function(req, res){
 });
 
 
-OnPartialStateMatrixReceievd = function(data) {
-
-    var found=-1;
-    
-    for(var i=0; i<tmp_rsm.length ; i++){
-        if(tmp_rsm[i] == data['id']){
-            found=i;
-        }
-    }
-    
-    if(found==-1){
-        console.log("Something went wrong!");        
-        return;
-    }
-
-    tmp_rsm.splice(found,1);
-    
-    var item = [];
-    item.push(data['id']);
-    
-    var row = data['matrix'];
-    
-    //console.log("row ", row);
-    
-    for(var i =1 ;i<row.length; i++){
-        item.push(row[i]);
-    }
-    
-    tmp_table.push(item);
-    
-    tmp_gsm.push(data);
-    
-    //tmp_browserClient.emit('GlobalStateMatrixPartial', tmp_table);
-    
-    if(tmp_rsm.length == 0 ) {
-        tmp_browserClient.emit('GlobalStateMatrixComplete', tmp_table);
-        tmp_gsm = [];
-    }
-    
-    //console.log("item " ,item);
-    
-}
-
-
 OnConnection = function(socket){
     doLog('Client Connected!');
     clients.push(socket);
-    
-    socket.on('StateMatrix', OnPartialStateMatrixReceievd);
-    
+
     socket.on('BrowserClient',function(msg){
         onBrowser(msg, socket)
     });
@@ -81,9 +35,8 @@ OnConnection = function(socket){
         onScheduleJob(msg, socket)
     })
     
-    socket.on('RequestToken', onRequestToken);
-    
-    socket.on('ForwardToken', onForwardToken);
+    socket.on('SendPrivilege', onSendPrivilege);
+    socket.on('RequestPrivilege', onRequestPrivilege);
     
     socket.on('disconnect', function() {
         clients.splice(clients.indexOf(socket), 1);
@@ -112,10 +65,6 @@ onBrowser = function(data, browserClient){
         case "GetTotalNumberOfClients":
             browserClient.emit("UpdateNumberOfClients", sites.length);
             break;
-        case "CreateGlobalStateMatrix":
-            CreateGlobalStateMatrix();
-            tmp_browserClient = browserClient;
-            break;
         case "GetGlobalLog":
             browserClient.emit("GlobalLog", globalLog);
             break;
@@ -139,40 +88,31 @@ onScheduleJob = function(data, browserClient){
 }
 
 
-onRequestToken = function(requestMessage) {
-    doLog('Token Requesteted from: ' + requestMessage.source + "  , target :" + requestMessage.target);
+onRequestPrivilege = function(requestMessage) {
+    doLog('Token Requested from: ' + requestMessage.source + "  , target :" + requestMessage.target);
+    
     for(var i=0, n=sites.length; i<n;i++){
-        if(sites[i].id == requestMessage.target){
+        if(sites[i].id == requestMessage.holder){
             
-            doLog('Forwarding Request Token message to : ', requestMessage.target);
-            sites[i].socket.emit('TokenReuqested', requestMessage);
+            doLog('Forwarding Request Privilege message to : ', requestMessage.holder);
+            sites[i].socket.emit('RequestReceievd', requestMessage);
             
             return;
         }
     }
 }
 
-onForwardToken = function(tokenData) {
-    doLog('TokenReceived from' + tokenData.source + "  , target :" + tokenData.target);
+onSendPrivilege = function(tokenData) {
+    doLog('PrivilegeReceived from' + tokenData.source + "  , target :" + tokenData.target);
+    
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == tokenData.target){
             
             doLog('Forwarding Token to :', tokenData.target);
-            sites[i].socket.emit('TokenReceievd', tokenData);
+            sites[i].socket.emit('PrivilegeReceievd', tokenData);
             
             return;
         }
-    }
-}
-
-function CreateGlobalStateMatrix(){
-    tmp_rsm = [];
-    tmp_table = [];
-    tmp_gsm = [];
-    
-    for(var i=0; i<sites.length; i++) {
-        sites[i].socket.emit("GetStateMatrix","-1");
-        tmp_rsm.push(i+1);
     }
 }
 
