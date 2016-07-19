@@ -5,6 +5,8 @@ var http = require('http').Server(app);
 var io = require('socket.io')(http);
 var Promise = require('promise');
 
+var chalk = require('chalk');
+
 var sites = [];
 var clients = [];
 var lastState = [];
@@ -27,6 +29,10 @@ OnConnection = function(socket){
     doLog('Client Connected!');
     clients.push(socket);
 
+    socket.on('State', OnSiteStateReceived);
+    
+    socket.on('JobFinished', onJobFinished);
+    
     socket.on('BrowserClient',function(msg){
         onBrowser(msg, socket)
     });
@@ -65,6 +71,10 @@ onBrowser = function(data, browserClient){
         case "GetTotalNumberOfClients":
             browserClient.emit("UpdateNumberOfClients", sites.length);
             break;
+        case "RequestForState":
+            GatherSitesState();
+            tmp_browserClient = browserClient;
+            break;
         case "GetGlobalLog":
             browserClient.emit("GlobalLog", globalLog);
             break;
@@ -89,12 +99,13 @@ onScheduleJob = function(data, browserClient){
 
 
 onRequestPrivilege = function(requestMessage) {
-    doLog('Token Requested from: ' + requestMessage.source + "  , target :" + requestMessage.target);
+    //console.log(requestMessage);
+    console.log('Token Requested from: ' + requestMessage.requester + "  , target: " + requestMessage.holder);
     
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == requestMessage.holder){
             
-            doLog('Forwarding Request Privilege message to : ', requestMessage.holder);
+            console.log('Forwarding Request Privilege message to : ', requestMessage.holder);
             sites[i].socket.emit('RequestReceievd', requestMessage);
             
             return;
@@ -103,16 +114,78 @@ onRequestPrivilege = function(requestMessage) {
 }
 
 onSendPrivilege = function(tokenData) {
-    doLog('PrivilegeReceived from' + tokenData.source + "  , target :" + tokenData.target);
+    //console.log(tokenData);
+    console.log('PrivilegeReceived from ' + tokenData.sender + "  , target: " + tokenData.target);
     
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == tokenData.target){
             
-            doLog('Forwarding Token to :', tokenData.target);
+            console.log('Forwarding Token to :', tokenData.target);
             sites[i].socket.emit('PrivilegeReceievd', tokenData);
             
             return;
         }
+    }
+}
+
+
+
+OnSiteStateReceived = function(data) {
+    var found=-1;
+    
+    for(var i=0; i<tmp_rsm.length ; i++){
+        if(tmp_rsm[i] == data['id']){
+            found=i;
+        }
+    }
+    
+    if(found==-1){
+        console.log("Something went wrong!");        
+        return;
+    }
+
+    tmp_rsm.splice(found,1);
+    tmp_gsm.push(data);
+    
+//    var item = [];
+//    item.push(data['id']);
+//    
+//    var row = data['matrix'];
+//    
+//    //console.log("row ", row);
+//    
+//    for(var i =1 ;i<row.length; i++){
+//        item.push(row[i]);
+//    }
+//    
+//    tmp_table.push(item);
+//    
+//    tmp_gsm.push(data);
+//    
+    //tmp_browserClient.emit('GlobalStateMatrixPartial', tmp_table);
+    
+    if(tmp_rsm.length == 0 ) {
+        //Completed!
+        tmp_browserClient.emit('GlobalStateComplete', tmp_gsm);
+        tmp_gsm = [];
+    }
+    
+    //console.log("item " ,item);
+}
+
+onJobFinished = function(data) {
+    console.log(chalk.red('Job ', data.job , ' Finished at site ', data.id ));
+};
+
+
+function GatherSitesState(){
+    tmp_rsm = [];
+    tmp_table = [];
+    tmp_gsm = [];
+    
+    for(var i=0; i<sites.length; i++) {
+        sites[i].socket.emit("GetState","-1");
+        tmp_rsm.push(i+1);
     }
 }
 

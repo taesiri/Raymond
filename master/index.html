@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-      <title>Singhal Algorithm</title>
+      <title>Raymond Algorithm</title>
       <script src="/js/jquery.min.js"></script>    
       <script src="/js/arrayToTable.js"></script>   
       <script src="/socket.io/socket.io.js"></script> 
@@ -27,6 +27,39 @@
           <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
       <![endif]-->
     
+      <script type="text/javascript" src="/js/d3.v2.js"></script>
+      
+      <style>
+        path.link {
+            fill: none;
+            stroke: #666;
+            stroke-width: 1.5px;
+        }
+        marker#licensing {
+            fill: green;
+        }
+        path.link.licensing {
+            stroke: green;
+        }
+        path.link.resolved {
+            stroke-dasharray: 0, 2 1;
+        }
+        circle {
+            fill: #ccc;
+            stroke: #333;
+            stroke-width: 1.5px;
+        }
+        text {
+            font: 10px sans-serif;
+            pointer-events: none;
+        }
+        text.shadow {
+            stroke: #fff;
+            stroke-width: 3px;
+            stroke-opacity: .8;
+        }
+      </style>
+      
       <script>  
             var socket = io();   
             $('form').submit(function(){
@@ -42,20 +75,16 @@
                UpdateNumberOfClientsWith(msg);
             });
           
-            socket.on('UpdateStateMatrix', function(msg){
-               
-            });
-          
-            socket.on('GlobalStateMatrixPartial', function(msg){
-                 UpdateStatePartialMatrixWith(msg);
-            });
-          
-            socket.on('GlobalStateMatrixComplete', function(msg){
-                 UpdateStateMatrixWith(msg);
+            socket.on('UpdateStates', function(msg){
+               console.log('States Updated!');
             });
           
             socket.on('GlobalLog', function(msg){
                  UpdateLogdataWith(msg);
+            });
+          
+            socket.on('GlobalStateComplete', function(data) {
+                drawGraphs(data); 
             });
           
             $( document ).ready(function() {
@@ -64,8 +93,8 @@
                     socket.emit('BrowserClient', "GetTotalNumberOfClients");
                 });
                 
-                $( "#requestStateMatrix" ).click(function() {
-                    socket.emit('BrowserClient', "CreateGlobalStateMatrix");
+                $( "#requestStates" ).click(function() {
+                    socket.emit('BrowserClient', "RequestForState");
                 });
 
                 $( "#globalLog" ).click(function() {
@@ -85,57 +114,42 @@
                     console.log( job.resources );
                     socket.emit('ScheduleJob', job);
                 });
+                
+                $( "#jobscheduleCombo" ).click(function() {
+                    
+                    var arrayOfLines = $('#jobsCombo').val().split('\n');
+
+                    arrayOfLines.forEach(function(element, index, array){
+                        
+                        console.log(element);
+                        
+                        var job= {};
+                        
+                        var splitOnDots = element.split(':');
+
+                        job.id = parseInt(splitOnDots[0], 10);
+                        job.client = parseInt(splitOnDots[1], 10);
+                        job.time = parseInt(splitOnDots[2], 10);
+                        
+                        job.resources =  splitOnDots[3].split('#');
+                    
+                        for (var i in job.resources) {
+                            job.resources[i] = parseInt(job.resources[i], 10);
+                        }
+                        
+                        console.log(job);
+                        
+                        socket.emit('ScheduleJob', job);
+
+                    });
+                    
+                    
+                });
+            
             });
           
           
-           function UpdateStateMatrixWith(data){ 
-               if(data.length>0){
-                   $("#SateMatrix" ).html("");
-                   
-                   var numberOfResource = data[0].length-1;
-                   for(var r =1; r<=numberOfResource; r++){
-                   
-                   
-                       var sz = data[0][1].length;
-
-                       var tableHeader = ["Site #"];
-                       for(var k =0;k<sz-1;k++){
-                           tableHeader.push(k+1);
-                       }
-
-                       var finalData = [];
-                       finalData.push(tableHeader);
-
-                           for (var i =0; i<data.length; i++){
-                               var ndata = data[i][r];
-                               ndata[0] = data[i][0];
-                              
-                               
-                               var reformattedArray = ndata.map(function(state, index){
-                                   if (index==0) return state;
-                                   if (state == 0) return 'H';
-                                   if (state == 1) return 'R';
-                                   if (state == 2) return 'E';
-                                   if (state == 3) return 'N';
-                                   return 'Err';
-                                });
-
-                               finalData.push(reformattedArray);
-                              
-                           }
-                       
-                         $("#SateMatrix" ).append("<p> Resource ID: " +  r  + "</p>");
-                         $("#SateMatrix" ).append(arrayToTable(finalData));
-
-                   } 
-               }
-          }
-          
-          function UpdateStatePartialMatrixWith(data){
-               //console.log(data);
-               $( "#SateMatrix" ).html(data);
-          }
-          
+           
           function UpdateNumberOfClientsWith(data){
               $( "#numberOfClients" ).html("Number of Clients: " + data);
           }
@@ -152,7 +166,7 @@
         <div class="container">
 
           <div class="page-header">
-            <h1>Singhal Algorithm</h1>
+            <h1>Raymond Algorithm</h1>
             <p class="lead">Distributed Mutual Exclusion Algorithm</p>
           </div>
 
@@ -191,37 +205,219 @@
                     </tr> 
                 </tbody> 
             </table>
-        
-        <hr>
-        
-        <h3>State Matrix</h3>
-        <div id="requestStateMatrix">
-            <button class="btn btn-default">Request State Matrix</button>
-        </div>
-        <br>
-        <div id="SateMatrix">
+            
+            <p >Combo Schedule</p> 
              
-        </div>
+            
+            <div>
+                <textarea id="jobsCombo" class="form-control" rows="10" ></textarea>
+            </div>
+            
+            <button id="jobscheduleCombo" class="btn btn-default" >Schedule Job</button> 
+
+        
+        
             
         <hr>
             
             <h3>Server LOG</h3>
             <div id="globalLog">
                 <button class="btn btn-default btn-sm" >
-                      <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
                     </button>
                 
                 <div >
-                    <textarea readonly id="logData"  class="form-control" rows="30" >
+                    <textarea readonly id="logData"  class="form-control" rows="5" >
                     </textarea>
                 </div>
             </div>
             
-    </div> <!-- /container -->
+            
+            <hr>
         
-        
-        
+        <h3>State Representation</h3>
+        <div id="requestStates">
+            <button class="btn btn-default">Request States</button>
+        </div>
+        <br>
+        <div id="StateDiv">
+             
+        </div>
+            
+        <div id="viz"></div>
+
+            
+        </div> <!-- /container -->
+            
         
         <script src="/js/ie10-viewport-bug-workaround.js"></script>
+    
+        <script>
+        
+
+        function drawGraphs(data) {
+            
+            console.log('drawGraphs ', data);
+
+            var alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+            var resources = data[0].resources;
+            
+            var links = []; 
+            
+            for(var i =0; i<resources; i++) {
+                
+                for(var j=0; j<data.length; j++) {
+                    var currentNode = data[j].id;
+                    var targetNode = data[j].tokenData[i].holder;
+                    var nodeType = "licensing";
+                    
+                    if(currentNode== targetNode) {
+                        nodeType= "suit" ;
+                    } else {
+                        nodeType= "licensing" ;
+                    }
+                    
+                    links.push( 
+                    {
+                      source: alphabet[currentNode-1] + "_" + i,
+                      target: alphabet[targetNode-1] + "_" + i,
+                      type: nodeType     
+                    });  
+                }
+                
+            }
+            
+//            var links = [
+//              {source: "B_1", target: "A_1", type: "licensing"},
+//              {source: "C_1", target: "A_1", type: "licensing"},
+//              {source: "A_1", target: "A_1", type: "suit"},
+//              
+//              {source: "B_2", target: "A_2", type: "licensing"},
+//              {source: "C_2", target: "A_2", type: "licensing"},
+//              {source: "A_2", target: "A_2", type: "suit"},
+//              
+//                 
+//              {source: "B", target: "A", type: "licensing"},
+//              {source: "C", target: "A", type: "licensing"},
+//              {source: "A", target: "A", type: "suit"}
+//            ];
+
+            
+            doActualDrawing(links);
+            
+        }
+            
+        function doActualDrawing(links) {
+            
+            if(d3.select("svg")) {
+                d3.select("svg").remove();
+            }
+             
+            var nodeset = {};
+
+            // Compute the distinct nodes from the links.
+            links.forEach(function(link) {
+              link.source = nodeset[link.source] || (nodeset[link.source] = {name: link.source});
+              link.target = nodeset[link.target] || (nodeset[link.target] = {name: link.target});
+            });
+
+            links.forEach(function(d) {
+                d.straight = 1;
+                links.forEach(function(d1) {
+                    if ((d.source == d1.target) && (d1.source == d.target))
+                        d.straight = 0;
+                });
+            });
+
+            nodes = d3.values(nodeset);
+
+            nodes.forEach(function(d) {
+                d.started = 0;
+                links.forEach(function(d1) {
+                    if (d == d1.source)
+                        d.started++;
+                });
+            });
+
+            var width = 1280,
+                height = 450;
+
+            var force = d3.layout.force()
+                .nodes(nodes)
+                .links(links)
+                .size([width, height])
+                .linkDistance(65)
+                .charge(-500)
+                .on("tick", tick)
+                .start();
+
+            var svg = d3.select("body").append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            // Per-type markers, as they don't inherit styles.
+            svg.append("defs").selectAll("marker")
+                .data(["suit", "licensing", "resolved"])
+              .enter().append("marker")
+                .attr("id", function(d) { return d; })
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 15)
+                .attr("refY", 0)
+                .attr("markerWidth", 20)
+                .attr("markerHeight", 15)
+                .attr("orient", "auto")
+              .append("path")
+                .attr("d", "M0,-5L10,0L0,5");
+
+            var path = svg.append("g").selectAll("path")
+                .data(force.links())
+                .attr("stroke-width", 3)
+              .enter().append("path")
+                .attr("class", function(d) { return "link " + d.type; })
+                .attr("marker-end", function(d) { return "url(#" + d.type + ")"; });
+
+            
+            var circle = svg.append("g").selectAll("circle")
+                .data(force.nodes())
+              .enter().append("circle")
+                .attr("r", function(d) { return 20 + d.started; })
+                .call(force.drag);
+
+            var text = svg.append("g").selectAll("text")
+                .data(force.nodes())
+              .enter().append("text")
+                .attr("x", function(d) { return -5; })
+                .attr("y", ".5em")
+                .text(function(d) { return d.name; });
+
+            // Use elliptical arc path segments to doubly-encode directionality.
+            function tick() {
+              path.attr("d", linkArc);
+              circle.attr("transform", transform);
+              text.attr("transform", transform);
+            }
+
+            function linkArc(d) {
+                var targetX = d.target.x - d.target.started,
+                  targetY = d.target.y - d.target.started,
+                  dx = targetX - d.source.x,
+                  dy = targetY - d.source.y,
+                  dr = (d.straight == 0)?Math.sqrt(dx * dx + dy * dy):0;
+              return "M" + d.source.x + "," + d.source.y +
+                   " L " + targetX + "," + targetY;
+            }
+
+            function transform(d) {
+              return "translate(" + d.x + "," + d.y + ")";
+            } 
+            
+            
+            
+
+        }
+        </script>
+        
+        
+        
     </body>
 </html>
