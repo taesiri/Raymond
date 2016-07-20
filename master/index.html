@@ -75,6 +75,11 @@
                UpdateNumberOfClientsWith(msg);
             });
           
+            
+            socket.on('UpdateStatistics', function(msg){
+               UpdateStatisticsWith(msg);
+            });
+          
             socket.on('UpdateStates', function(msg){
                console.log('States Updated!');
             });
@@ -99,6 +104,10 @@
 
                 $( "#globalLog" ).click(function() {
                     socket.emit('BrowserClient', "GetGlobalLog");
+                });
+                
+                $( "#statistics" ).click(function() {
+                    socket.emit('BrowserClient', "GetStatistics");
                 });
                 
                 $( "#jobschedule" ).click(function() {
@@ -152,6 +161,10 @@
            
           function UpdateNumberOfClientsWith(data){
               $( "#numberOfClients" ).html("Number of Clients: " + data);
+          }
+          
+          function UpdateStatisticsWith(data) {
+              $( "#statisticsData" ).html(data);
           }
           
           function UpdateLogdataWith(data){
@@ -234,6 +247,23 @@
             
             
             <hr>
+            
+            
+            <h3>Algorithm Statistics</h3>
+            <div id="statistics">
+                <button class="btn btn-default btn-sm" >
+                    <span class="glyphicon glyphicon-refresh" aria-hidden="true"></span>
+                    </button>
+                
+                <div >
+                    <textarea readonly id="statisticsData"  class="form-control" rows="5" >
+                    </textarea>
+                </div>
+            </div>
+            
+            
+            <hr>
+            
         
         <h3>State Representation</h3>
         <div id="requestStates">

@@ -16,7 +16,14 @@ var tmp_gsm = [];
 var tmp_rsm = [];
 var tmp_browserClient;
 
+var jobScheduleTime = [];
+var jobFinishTime = [];
+
 var globalLog = "";
+
+
+var onRequestPrivilegeCounter=0;
+var onSendPrivilegeCounter=0;
 
 app.use(express.static('public'));
 
@@ -26,9 +33,9 @@ app.get('/', function(req, res){
 
 
 OnConnection = function(socket){
-    doLog('Client Connected!');
+    console.log('Client Connected!');
     clients.push(socket);
-
+    
     socket.on('State', OnSiteStateReceived);
     
     socket.on('JobFinished', onJobFinished);
@@ -51,7 +58,7 @@ OnConnection = function(socket){
     socket.on('RegisterSite', function(siteName){
         for(var i=0; i<sites.length ; i++){
             if(sites[i].id == siteName){
-                doLog("Client id already exist, updating the Socket!");
+                console.log("Client id already exist, updating the Socket!");
                 sites[i].socket = socket;
                 return;
             }
@@ -71,6 +78,9 @@ onBrowser = function(data, browserClient){
         case "GetTotalNumberOfClients":
             browserClient.emit("UpdateNumberOfClients", sites.length);
             break;
+        case "GetStatistics":
+            CalculateStatistics(browserClient);
+            break;
         case "RequestForState":
             GatherSitesState();
             tmp_browserClient = browserClient;
@@ -83,13 +93,14 @@ onBrowser = function(data, browserClient){
     }
 }
 
-
 onScheduleJob = function(data, browserClient){
-    doLog('onScheduleJob ' + data);
+    console.log('onScheduleJob ',  data);
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == data.client){
             
-            doLog('jobSceduled!');
+            var mtime = (new Date());
+            
+            jobScheduleTime.push({'jobId': data.id, 'nodeId': data.client, 'startTime' : mtime.getTime(), 'duration' : data.time});
             sites[i].socket.emit('ScheduleJob', data);
             
             return;
@@ -97,9 +108,8 @@ onScheduleJob = function(data, browserClient){
     }
 }
 
-
 onRequestPrivilege = function(requestMessage) {
-    //console.log(requestMessage);
+    onRequestPrivilegeCounter++;
     console.log('Token Requested from: ' + requestMessage.requester + "  , target: " + requestMessage.holder);
     
     for(var i=0, n=sites.length; i<n;i++){
@@ -114,7 +124,7 @@ onRequestPrivilege = function(requestMessage) {
 }
 
 onSendPrivilege = function(tokenData) {
-    //console.log(tokenData);
+    onSendPrivilegeCounter++;
     console.log('PrivilegeReceived from ' + tokenData.sender + "  , target: " + tokenData.target);
     
     for(var i=0, n=sites.length; i<n;i++){
@@ -127,8 +137,6 @@ onSendPrivilege = function(tokenData) {
         }
     }
 }
-
-
 
 OnSiteStateReceived = function(data) {
     var found=-1;
@@ -147,34 +155,17 @@ OnSiteStateReceived = function(data) {
     tmp_rsm.splice(found,1);
     tmp_gsm.push(data);
     
-//    var item = [];
-//    item.push(data['id']);
-//    
-//    var row = data['matrix'];
-//    
-//    //console.log("row ", row);
-//    
-//    for(var i =1 ;i<row.length; i++){
-//        item.push(row[i]);
-//    }
-//    
-//    tmp_table.push(item);
-//    
-//    tmp_gsm.push(data);
-//    
-    //tmp_browserClient.emit('GlobalStateMatrixPartial', tmp_table);
-    
     if(tmp_rsm.length == 0 ) {
         //Completed!
         tmp_browserClient.emit('GlobalStateComplete', tmp_gsm);
         tmp_gsm = [];
     }
-    
-    //console.log("item " ,item);
 }
 
 onJobFinished = function(data) {
-    console.log(chalk.red('Job ', data.job , ' Finished at site ', data.id ));
+    console.log(data);
+    jobFinishTime.push({'jobId': data.job, 'nodeId': data.id, 'resources': data.resources, 'startTime' : data.startTime, 'finishTime' : data.finishTime});
+    console.log(chalk.red('Job ', data.job , ', startTime ' , data.startTime, ', finishTime ' , data.finishTime ));
 };
 
 
@@ -190,13 +181,124 @@ function GatherSitesState(){
 }
 
 
-function doLog(message) {
-    console.log(message);
-    globalLog += message + '\n';
+function CalculateStatistics(browserClient) {
+    console.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
+    console.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
+    
+    
+    // for one shared resource ONLY!
+    
+    var TimeArray = [];
+    
+    jobFinishTime.forEach(function(element, index, array) {
+       
+        element.resources.forEach(function(elm,idx,arr) {
+            
+            if(! TimeArray[elm]) {
+                 TimeArray[elm] = [];
+            }
+            
+            TimeArray[elm].push({'time': element.startTime, 'event': 'start'});
+            TimeArray[elm].push({'time': element.finishTime, 'event': 'finish'});
+            
+        });
+        
+    });
+    
+    TimeArray.forEach( function(element, index) {
+       
+        TimeArray[index] = TimeArray[index].sort(function (a ,b) {
+            return a.time - b.time;
+        });
+        
+    });
+    
+    console.log(TimeArray);
+
+    delayBetweenCSEnteranceTime = [];
+    
+    TimeArray.forEach( function(element, index) {
+       
+        var deltaTimes = [];
+        var deltaSum = 0;
+        
+        
+        for(var i=1; i<TimeArray[index].length; i+=2) {
+        
+            if(TimeArray[index][i].event != 'finish' || TimeArray[index][i-1].event != 'start') {
+                console.log(chalk.red("PANIC"));
+
+                return;
+            }
+
+
+            deltaSum += TimeArray[index][i].time-TimeArray[index][i-1].time;
+            deltaTimes.push(TimeArray[index][i].time-TimeArray[index][i-1].time);
+        }
+        
+        delayBetweenCSEnteranceTime[index] = deltaTimes;
+    });
+
+   
+    
+    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'DetailedSynchTimes' : JSON.stringify(delayBetweenCSEnteranceTime) };
+    
+    browserClient.emit('UpdateStatistics', JSON.stringify(statResult) );  
+
 }
+
+//
+//
+//function CalculateStatistics(browserClient) {
+//    console.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
+//    console.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
+//    
+//    
+//    // for one shared resource ONLY!
+//    
+//    var TimeArray = [];
+//    
+//    jobFinishTime.forEach(function(element, index, array) {
+//       
+//        TimeArray.push({'time': element.startTime, 'event': 'start'});
+//        TimeArray.push({'time': element.finishTime, 'event': 'finish'});
+//
+//    });
+//    
+//    TimeArray = TimeArray.sort(function (a ,b) {
+//        return a.time - b.time;
+//    });
+//    
+//    
+//    console.log(TimeArray);
+//
+//    
+//    var deltaTimes = [];
+//    var deltaSum = 0;
+//    
+//    for(var i=1; i<TimeArray.length; i+=2) {
+//        
+//        if(TimeArray[i].event != 'finish' || TimeArray[i-1].event != 'start') {
+//            console.log(chalk.red("PANIC"));
+//            
+//            return;
+//        }
+//        
+//        
+//        deltaSum += TimeArray[i].time-TimeArray[i-1].time;
+//        deltaTimes.push(TimeArray[i].time-TimeArray[i-1].time);
+//    }
+//    
+//    console.log(deltaTimes);
+//    console.log(deltaSum/3);
+//    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'AverageSynchTime' : deltaSum/sites.length };
+//    
+//    browserClient.emit('UpdateStatistics', JSON.stringify(statResult) );  
+//
+//}
 
 io.on('connection', OnConnection);
 
 http.listen(5000, function(){
-  doLog('listening on *:5000');
+  console.log('listening on *:5000');
 });

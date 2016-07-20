@@ -18,6 +18,7 @@ var totalSites;
 var numberOfResources=1;
 var IsIdle = true;
 var Checking = false;
+
 OnConnect = function (data) {
     RegsiterOnCoordinator();
 }
@@ -166,24 +167,23 @@ function RunJob() {
     var currentJob = jobQ.shift();
     
     IsIdle = false;
-    
     Checking = false;
     
     var jobtime = currentJob.time;
     var resources = currentJob.resources;
-
+    
+    var startTime = (new Date()).getTime();
+    
     console.log("Executing Job#: " , currentJob.id);
     
     setTimeout(function(){
         
         console.log("Job#: " ,  currentJob.id , "Finished!");
         
-        slave.emit('JobFinished', {'id' : slaveId, 'job' : currentJob.id});
-    
-        console.log(token_data);
+        slave.emit('JobFinished', {'id' : slaveId, 'job' : currentJob.id ,'resources' : currentJob.resources ,'startTime': startTime, 'finishTime' : (new Date()).getTime()});
     
         IsIdle= true;
-        
+
         console.log("Forward Token to other requesting sites");
 
         for(var r =0; r<numberOfResources; r++){
@@ -200,7 +200,7 @@ function RunJob() {
                 RequestResources();
             } 
         }
-    }, jobtime*1000); 
+    }, jobtime); 
 }
 
 
