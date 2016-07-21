@@ -1,6 +1,6 @@
 var prompt = require('prompt');
 var io = require('socket.io-client');
-var socketURL = 'http://0.0.0.0:5000';
+var socketURL = 'http://0.0.0.0:5001';
 
 var chalk = require('chalk');
 
@@ -56,15 +56,16 @@ OnPrivilegeReceievd = function(privMessage) {
         if (token_data[token_id].request_queue[0] == slaveId) {
             
             // I'm at top of Q
-            token_data[token_id].request_queue.shift();
             token_data[token_id].holder = slaveId;
             
             Checking = true;
             if(have_all_tokens()){
+                token_data[token_id].request_queue.shift();
                 RunJob();
             }else {
-                Checking = false;
+                Checking = false;   
             }
+            
             
         } else {
             ForwardPrivilege(token_id);
@@ -279,14 +280,24 @@ function RegsiterOnCoordinator() {
 }
 
 
-prompt.start();
-
-prompt.get(['id', 'n', 'r', 'h'], function (err, result) {
-    if (err) { return onErr(err); }    
-    initializeSlave(result.id, result.n, result.r, result.h);  
-});
-
-function onErr(err) {
-    console.log(err);
-    return 1;
+if(process.argv.length != 4 + 1 + 2) {
+    console.log(process.argv.length );
+    console.log(chalk.red("ERROR, check your input"));
+    console.log(chalk.red("Correct input: coordinatorAddress, id, n, r, holder"));
+} else {
+    socketURL = process.argv[2];
+    initializeSlave(process.argv[3], process.argv[4], process.argv[5], process.argv[6]); 
 }
+
+//
+//prompt.start();
+//
+//prompt.get(['id', 'n', 'r', 'h'], function (err, result) {
+//    if (err) { return onErr(err); }    
+//    initializeSlave(result.id, result.n, result.r, result.h);  
+//});
+//
+//function onErr(err) {
+//    console.log(err);
+//    return 1;
+//}

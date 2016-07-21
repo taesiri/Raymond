@@ -1,10 +1,12 @@
+const Console = require('console').Console;
+const fs = require('fs');
+
+
 var express = require('express');
 var app = express();
 
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
-var Promise = require('promise');
-
 var chalk = require('chalk');
 
 var sites = [];
@@ -19,9 +21,6 @@ var tmp_browserClient;
 var jobScheduleTime = [];
 var jobFinishTime = [];
 
-var globalLog = "";
-
-
 var onRequestPrivilegeCounter=0;
 var onSendPrivilegeCounter=0;
 
@@ -32,8 +31,19 @@ app.get('/', function(req, res){
 });
 
 
+
+const output = fs.createWriteStream('./stdout.log');
+const errorOutput = fs.createWriteStream('./stderr.log');
+// custom simple logger
+const myConsole = new Console(output, errorOutput);
+//
+//const out = getStreamSomehow();
+//const err = getStreamSomehow();
+//const myConsole = new console.Console(out, err);
+
+
 OnConnection = function(socket){
-    console.log('Client Connected!');
+    myConsole.log('Client Connected!');
     clients.push(socket);
     
     socket.on('State', OnSiteStateReceived);
@@ -58,7 +68,7 @@ OnConnection = function(socket){
     socket.on('RegisterSite', function(siteName){
         for(var i=0; i<sites.length ; i++){
             if(sites[i].id == siteName){
-                console.log("Client id already exist, updating the Socket!");
+                myConsole.log("Client id already exist, updating the Socket!");
                 sites[i].socket = socket;
                 return;
             }
@@ -86,7 +96,12 @@ onBrowser = function(data, browserClient){
             tmp_browserClient = browserClient;
             break;
         case "GetGlobalLog":
-            browserClient.emit("GlobalLog", globalLog);
+            
+            fs.readFile('./stdout.log', (err, data) => {
+              if (err) throw err;
+              browserClient.emit("GlobalLog", String.fromCharCode.apply(null, new Uint16Array(data)));
+            });
+            
             break;
         default:
             break;       
@@ -94,7 +109,7 @@ onBrowser = function(data, browserClient){
 }
 
 onScheduleJob = function(data, browserClient){
-    console.log('onScheduleJob ',  data);
+    myConsole.log('onScheduleJob ',  data);
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == data.client){
             
@@ -110,12 +125,12 @@ onScheduleJob = function(data, browserClient){
 
 onRequestPrivilege = function(requestMessage) {
     onRequestPrivilegeCounter++;
-    console.log('Token Requested from: ' + requestMessage.requester + "  , target: " + requestMessage.holder);
+    myConsole.log('Token Requested from: ' + requestMessage.requester + "  , target: " + requestMessage.holder);
     
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == requestMessage.holder){
             
-            console.log('Forwarding Request Privilege message to : ', requestMessage.holder);
+            myConsole.log('Forwarding Request Privilege message to : ', requestMessage.holder);
             sites[i].socket.emit('RequestReceievd', requestMessage);
             
             return;
@@ -125,12 +140,12 @@ onRequestPrivilege = function(requestMessage) {
 
 onSendPrivilege = function(tokenData) {
     onSendPrivilegeCounter++;
-    console.log('PrivilegeReceived from ' + tokenData.sender + "  , target: " + tokenData.target);
+    myConsole.log('PrivilegeReceived from ' + tokenData.sender + "  , target: " + tokenData.target);
     
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == tokenData.target){
             
-            console.log('Forwarding Token to :', tokenData.target);
+            myConsole.log('Forwarding Token to :', tokenData.target);
             sites[i].socket.emit('PrivilegeReceievd', tokenData);
             
             return;
@@ -148,7 +163,7 @@ OnSiteStateReceived = function(data) {
     }
     
     if(found==-1){
-        console.log("Something went wrong!");        
+        myConsole.log("Something went wrong!");        
         return;
     }
 
@@ -163,9 +178,10 @@ OnSiteStateReceived = function(data) {
 }
 
 onJobFinished = function(data) {
-    console.log(data);
+    myConsole.log(data);
     jobFinishTime.push({'jobId': data.job, 'nodeId': data.id, 'resources': data.resources, 'startTime' : data.startTime, 'finishTime' : data.finishTime});
-    console.log(chalk.red('Job ', data.job , ', startTime ' , data.startTime, ', finishTime ' , data.finishTime ));
+    myConsole.log(chalk.red('Job ', data.job , ', startTime ' , data.startTime, ', finishTime ' , data.finishTime ));
+    myConsole.log(chalk.yellow(jobFinishTime.length, " jobs finished!"));
 };
 
 
@@ -182,11 +198,9 @@ function GatherSitesState(){
 
 
 function CalculateStatistics(browserClient) {
-    console.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
-    console.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
+    myConsole.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
+    myConsole.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
     
-    
-    // for one shared resource ONLY!
     
     var TimeArray = [];
     
@@ -213,7 +227,7 @@ function CalculateStatistics(browserClient) {
         
     });
     
-    console.log(TimeArray);
+    myConsole.log(TimeArray);
 
     delayBetweenCSEnteranceTime = [];
     
@@ -226,7 +240,9 @@ function CalculateStatistics(browserClient) {
         for(var i=1; i<TimeArray[index].length; i+=2) {
         
             if(TimeArray[index][i].event != 'finish' || TimeArray[index][i-1].event != 'start') {
-                console.log(chalk.red("PANIC"));
+                myConsole.log("PANIC");
+                myConsole.log(i-1, ",  ", TimeArray[index][i-1].event);
+                myConsole.log(i, ", ", TimeArray[index][i].event);
 
                 return;
             }
@@ -241,7 +257,7 @@ function CalculateStatistics(browserClient) {
 
    
     
-    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'DetailedSynchTimes' : JSON.stringify(delayBetweenCSEnteranceTime) };
+    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'DetailedSynchTimes' : JSON.stringify(delayBetweenCSEnteranceTime) , 'jobDone' : jobFinishTime.length };
     
     browserClient.emit('UpdateStatistics', JSON.stringify(statResult) );  
 
@@ -250,8 +266,8 @@ function CalculateStatistics(browserClient) {
 //
 //
 //function CalculateStatistics(browserClient) {
-//    console.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
-//    console.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
+//    myConsole.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
+//    myConsole.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
 //    
 //    
 //    // for one shared resource ONLY!
@@ -270,7 +286,7 @@ function CalculateStatistics(browserClient) {
 //    });
 //    
 //    
-//    console.log(TimeArray);
+//    myConsole.log(TimeArray);
 //
 //    
 //    var deltaTimes = [];
@@ -279,7 +295,7 @@ function CalculateStatistics(browserClient) {
 //    for(var i=1; i<TimeArray.length; i+=2) {
 //        
 //        if(TimeArray[i].event != 'finish' || TimeArray[i-1].event != 'start') {
-//            console.log(chalk.red("PANIC"));
+//            myConsole.log(chalk.red("PANIC"));
 //            
 //            return;
 //        }
@@ -289,8 +305,8 @@ function CalculateStatistics(browserClient) {
 //        deltaTimes.push(TimeArray[i].time-TimeArray[i-1].time);
 //    }
 //    
-//    console.log(deltaTimes);
-//    console.log(deltaSum/3);
+//    myConsole.log(deltaTimes);
+//    myConsole.log(deltaSum/3);
 //    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'AverageSynchTime' : deltaSum/sites.length };
 //    
 //    browserClient.emit('UpdateStatistics', JSON.stringify(statResult) );  
@@ -300,5 +316,5 @@ function CalculateStatistics(browserClient) {
 io.on('connection', OnConnection);
 
 http.listen(5000, function(){
-  console.log('listening on *:5000');
+  myConsole.log('listening on *:5000');
 });
