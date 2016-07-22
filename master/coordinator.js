@@ -24,6 +24,9 @@ var jobFinishTime = [];
 var onRequestPrivilegeCounter=0;
 var onSendPrivilegeCounter=0;
 
+var globalStartTime=0;
+
+
 app.use(express.static('public'));
 
 app.get('/', function(req, res){
@@ -109,6 +112,10 @@ onBrowser = function(data, browserClient){
 }
 
 onScheduleJob = function(data, browserClient){
+    if(globalStartTime==0) {
+        globalStartTime = (new Date()).getTime();
+    }
+    
     myConsole.log('onScheduleJob ',  data);
     for(var i=0, n=sites.length; i<n;i++){
         if(sites[i].id == data.client){
@@ -180,8 +187,8 @@ OnSiteStateReceived = function(data) {
 onJobFinished = function(data) {
     myConsole.log(data);
     jobFinishTime.push({'jobId': data.job, 'nodeId': data.id, 'resources': data.resources, 'startTime' : data.startTime, 'finishTime' : data.finishTime});
-    myConsole.log(chalk.red('Job ', data.job , ', startTime ' , data.startTime, ', finishTime ' , data.finishTime ));
-    myConsole.log(chalk.yellow(jobFinishTime.length, " jobs finished!"));
+    myConsole.log('Job ', data.job , ', startTime ' , data.startTime, ', finishTime ' , data.finishTime);
+    console.log(jobFinishTime.length, " jobs finished!");
 };
 
 
@@ -201,6 +208,8 @@ function CalculateStatistics(browserClient) {
     myConsole.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
     myConsole.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
     
+    var totalTime = jobFinishTime[jobFinishTime.length-1].finishTime - globalStartTime;
+
     
     var TimeArray = [];
     
@@ -237,19 +246,19 @@ function CalculateStatistics(browserClient) {
         var deltaSum = 0;
         
         
-        for(var i=1; i<TimeArray[index].length; i+=2) {
+        for(var i=1; i<TimeArray[index].length-1; i+=2) {
         
-            if(TimeArray[index][i].event != 'finish' || TimeArray[index][i-1].event != 'start') {
+            if(TimeArray[index][i].event != 'finish' || TimeArray[index][i+1].event != 'start') {
                 myConsole.log("PANIC");
-                myConsole.log(i-1, ",  ", TimeArray[index][i-1].event);
+                myConsole.log(i+1, ",  ", TimeArray[index][i+1].event);
                 myConsole.log(i, ", ", TimeArray[index][i].event);
 
                 return;
             }
 
 
-            deltaSum += TimeArray[index][i].time-TimeArray[index][i-1].time;
-            deltaTimes.push(TimeArray[index][i].time-TimeArray[index][i-1].time);
+            deltaSum += TimeArray[index][i+1].time-TimeArray[index][i].time;
+            deltaTimes.push(TimeArray[index][i+1].time-TimeArray[index][i].time);
         }
         
         delayBetweenCSEnteranceTime[index] = deltaTimes;
@@ -257,61 +266,12 @@ function CalculateStatistics(browserClient) {
 
    
     
-    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'DetailedSynchTimes' : JSON.stringify(delayBetweenCSEnteranceTime) , 'jobDone' : jobFinishTime.length };
+    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'DetailedSynchTimes' : JSON.stringify(delayBetweenCSEnteranceTime) , 'jobDone' : jobFinishTime.length, 'totalTime': totalTime };
     
     browserClient.emit('UpdateStatistics', JSON.stringify(statResult) );  
 
 }
 
-//
-//
-//function CalculateStatistics(browserClient) {
-//    myConsole.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
-//    myConsole.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
-//    
-//    
-//    // for one shared resource ONLY!
-//    
-//    var TimeArray = [];
-//    
-//    jobFinishTime.forEach(function(element, index, array) {
-//       
-//        TimeArray.push({'time': element.startTime, 'event': 'start'});
-//        TimeArray.push({'time': element.finishTime, 'event': 'finish'});
-//
-//    });
-//    
-//    TimeArray = TimeArray.sort(function (a ,b) {
-//        return a.time - b.time;
-//    });
-//    
-//    
-//    myConsole.log(TimeArray);
-//
-//    
-//    var deltaTimes = [];
-//    var deltaSum = 0;
-//    
-//    for(var i=1; i<TimeArray.length; i+=2) {
-//        
-//        if(TimeArray[i].event != 'finish' || TimeArray[i-1].event != 'start') {
-//            myConsole.log(chalk.red("PANIC"));
-//            
-//            return;
-//        }
-//        
-//        
-//        deltaSum += TimeArray[i].time-TimeArray[i-1].time;
-//        deltaTimes.push(TimeArray[i].time-TimeArray[i-1].time);
-//    }
-//    
-//    myConsole.log(deltaTimes);
-//    myConsole.log(deltaSum/3);
-//    var statResult = {'RequestPrivilegeMessages': onRequestPrivilegeCounter, 'SendPrivilegeMessages': onSendPrivilegeCounter , 'AverageSynchTime' : deltaSum/sites.length };
-//    
-//    browserClient.emit('UpdateStatistics', JSON.stringify(statResult) );  
-//
-//}
 
 io.on('connection', OnConnection);
 
