@@ -18,7 +18,6 @@ var tmp_gsm = [];
 var tmp_rsm = [];
 var tmp_browserClient;
 
-var jobScheduleTime = [];
 var jobFinishTime = [];
 
 var onRequestPrivilegeCounter=0;
@@ -26,6 +25,7 @@ var onSendPrivilegeCounter=0;
 
 var globalStartTime=0;
 
+var finishBag = [];
 
 app.use(express.static('public'));
 
@@ -34,20 +34,25 @@ app.get('/', function(req, res){
 });
 
 
-
 const output = fs.createWriteStream('./stdout.log');
 const errorOutput = fs.createWriteStream('./stderr.log');
-// custom simple logger
 const myConsole = new Console(output, errorOutput);
-//
-//const out = getStreamSomehow();
-//const err = getStreamSomehow();
-//const myConsole = new console.Console(out, err);
 
+
+OnDebug = function(socket){
+    console.log('OnDebug');
+    
+    if(tmp_browserClient){
+        console.log('debug data');
+        GatherSitesState();
+    }
+}
 
 OnConnection = function(socket){
     myConsole.log('Client Connected!');
     clients.push(socket);
+    
+    socket.on('Debug', OnDebug);
     
     socket.on('State', OnSiteStateReceived);
     
@@ -86,6 +91,7 @@ OnConnection = function(socket){
 }
 
 onBrowser = function(data, browserClient){
+    tmp_browserClient = browserClient;
     
     switch(data){
         case "GetTotalNumberOfClients":
@@ -117,12 +123,10 @@ onScheduleJob = function(data, browserClient){
     }
     
     myConsole.log('onScheduleJob ',  data);
+    
     for(var i=0, n=sites.length; i<n;i++){
-        if(sites[i].id == data.client){
-            
-            var mtime = (new Date());
-            
-            jobScheduleTime.push({'jobId': data.id, 'nodeId': data.client, 'startTime' : mtime.getTime(), 'duration' : data.time});
+        if(sites[i].id == data[0].client){
+
             sites[i].socket.emit('ScheduleJob', data);
             
             return;
@@ -185,6 +189,7 @@ OnSiteStateReceived = function(data) {
 }
 
 onJobFinished = function(data) {
+    finishBag.push(data.job);
     myConsole.log(data);
     jobFinishTime.push({'jobId': data.job, 'nodeId': data.id, 'resources': data.resources, 'startTime' : data.startTime, 'finishTime' : data.finishTime});
     myConsole.log('Job ', data.job , ', startTime ' , data.startTime, ', finishTime ' , data.finishTime);
@@ -205,6 +210,11 @@ function GatherSitesState(){
 
 
 function CalculateStatistics(browserClient) {
+    
+    finishBag.sort();
+    myConsole.log("JOBBAG");
+    myConsole.log(finishBag);
+    
     myConsole.log(chalk.green("#RequestPrivilege Messages ", onRequestPrivilegeCounter));
     myConsole.log(chalk.green("#SendPrivilege Messages ", onSendPrivilegeCounter));
     
@@ -221,8 +231,8 @@ function CalculateStatistics(browserClient) {
                  TimeArray[elm] = [];
             }
             
-            TimeArray[elm].push({'time': element.startTime, 'event': 'start'});
-            TimeArray[elm].push({'time': element.finishTime, 'event': 'finish'});
+            TimeArray[elm].push({'time': element.startTime, 'event': 'start', 'jobId' : element.jobId});
+            TimeArray[elm].push({'time': element.finishTime, 'event': 'finish', 'jobId' : element.jobId});
             
         });
         

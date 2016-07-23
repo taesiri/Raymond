@@ -10,7 +10,6 @@ var options = {
   reconnect: true
 };
 
-
 var token_data = [];
 var jobQ = [];
 var slaveId;
@@ -19,14 +18,19 @@ var numberOfResources=1;
 var IsIdle = true;
 var Checking = false;
 
+var process_requesting =false;
+var process_privreseived = false;
+
 OnConnect = function (data) {
     RegsiterOnCoordinator();
 }
 
-OnScheduleJob = function(job) {
-    console.log("New JOB: ", job);
-
-    jobQ.push(job);
+OnScheduleJob = function(jobs) {
+    console.log("New Jobs: ", jobs);
+    
+    for(var i=0; i< jobs.length; i++){
+        jobQ.push(jobs[i]);
+    }
     
     if(IsIdle == true) {
        
@@ -43,20 +47,24 @@ OnScheduleJob = function(job) {
 }
 
 OnPrivilegeReceievd = function(privMessage) {
-    var token_id = privMessage.token_id;
+    process_privreseived = true;
+    console.log("OnPrivilegeReceievd ", privMessage)
     
-    console.log(token_data[token_id]);
-    
-    token_data[token_id].asked  = false;
+    if(process_requesting) 
+        console.log("OnPrivilegeReceievd/OnRequestReceievd Conflict!");
 
     
-    if(token_data[token_id].request_queue.length == 0) {
-        token_data[token_id].holder = slaveId;
-    } else {
-        if (token_data[token_id].request_queue[0] == slaveId) {
+    var token_id = privMessage.token_id;
+    token_data[token_id].holder = slaveId;
+    
+    //console.log(token_data[token_id]);
+    
+    token_data[token_id].asked  = false;
+    
+     if (token_data[token_id].request_queue[0] == slaveId) {
             
             // I'm at top of Q
-            token_data[token_id].holder = slaveId;
+            //token_data[token_id].holder = slaveId;
             
             Checking = true;
             if(have_all_tokens()){
@@ -70,23 +78,38 @@ OnPrivilegeReceievd = function(privMessage) {
         } else {
             ForwardPrivilege(token_id);
         }
-    }
+    
+        
+    process_privreseived = false;
 }
 
 OnRequestReceievd = function(requestMessage) {
-    console.log("OnRequestReceievd ", requestMessage)
+    process_requesting=true;
+    console.log("OnRequestReceievd ", requestMessage);
+    
+    if(process_privreseived) 
+        console.log("OnRequestReceievd/OnPrivilegeReceievd Conflict!");
     
     var token_id = requestMessage.token_id;
     
+    
+    if( token_data[token_id].request_queue.indexOf(requestMessage.requester)!=-1){
+        console.log("---->>>>>> Something bad happened! 2");
+   
+        return;
+    }
+
     token_data[token_id].request_queue.push(requestMessage.requester); 
 
     if ( token_data[token_id].holder == slaveId ) { 
         
         if(Checking) {
+            
             console.log("---->>>>>> Something bad happened!");
         }
         else {
             if(IsIdle && token_data[token_id].request_queue.length == 1) {
+                console.log("STRANGE FORWARD!");
                 ForwardPrivilege(token_id);
             }
         }
@@ -94,7 +117,7 @@ OnRequestReceievd = function(requestMessage) {
     } else {
         RequestPrivilege(token_id);
     }
-    console.log(token_data);
+    process_requesting=false;
 }
 
 
@@ -130,9 +153,13 @@ function RequestPrivilege(token_id) {
 
 function ForwardPrivilege(token_id) {
 
-    console.log("trying Forwarding Privilege", token_id);
+    if(token_data[token_id].holder!=slaveId){
+        return;
+    }
     
-    if(token_data[token_id].request_queue==0) {
+    console.log("trying to Forward the Privilege", token_id);
+    
+    if(token_data[token_id].request_queue.length==0) {
        console.log("request queue of token# ", token_id, " is empty!");
        return;
     }
@@ -144,6 +171,9 @@ function ForwardPrivilege(token_id) {
         sender: slaveId
     };
     
+    if(target_id==slaveId)
+        console.log("PANIC, target_id==slaveId");
+    
     console.log("Forwarding Privilege ", token_id, " to ", target_id);
 
     slave.emit("SendPrivilege", st_message);
@@ -152,28 +182,28 @@ function ForwardPrivilege(token_id) {
     token_data[token_id].asked = false;
     token_data[token_id].holder = target_id;
     
-    if(token_data[token_id].request_queue>0){
+    if(token_data[token_id].request_queue.length>0){
+        console.log("reRequesting token");
         RequestPrivilege(token_id);
-    } 
-    console.log(token_data);
+    }
+    
 }
 
 function RunJob() {
-    
     
     if(jobQ.length <= 0){
         return;
     }
     
-    var currentJob = jobQ.shift();
-    
     IsIdle = false;
     Checking = false;
     
+    var currentJob = jobQ.shift();
+    
     var jobtime = currentJob.time;
     var resources = currentJob.resources;
-    
     var startTime = (new Date()).getTime();
+    
     
     console.log("Executing Job#: " , currentJob.id);
     
@@ -183,13 +213,14 @@ function RunJob() {
         
         slave.emit('JobFinished', {'id' : slaveId, 'job' : currentJob.id ,'resources' : currentJob.resources ,'startTime': startTime, 'finishTime' : (new Date()).getTime()});
     
-        IsIdle= true;
 
         console.log("Forward Token to other requesting sites");
 
         for(var r =0; r<numberOfResources; r++){
             ForwardPrivilege(r);
         }
+        
+        IsIdle= true;
         
         if(jobQ.length>0){
             console.log("check if we can run another job");
@@ -216,7 +247,7 @@ function have_all_tokens() {
         console.log(wanted);
 
         for(var r in wanted) {
-            console.log("checking token# ", wanted[r], "holder", token_data[r].holder)
+            console.log("checking token# ", wanted[r], "holder", token_data[wanted[r]].holder)
              if(token_data[wanted[r]].holder ==  slaveId ) {
                  
                   if(token_data[wanted[r]].request_queue.length == 0) {

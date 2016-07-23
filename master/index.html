@@ -120,7 +120,7 @@
                         job.resources[i] = parseInt(job.resources[i], 10);
                     }
                     
-                    console.log( job.resources );
+                    //console.log( job.resources );
                     socket.emit('ScheduleJob', job);
                 });
                 
@@ -128,14 +128,14 @@
                     
                     var arrayOfLines = $('#jobsCombo').val().split('\n');
 
+                    var jobs = [];
+                    
                     arrayOfLines.forEach(function(element, index, array){
                         
-                        console.log(element);
-                        
-                        var job= {};
-                        
                         var splitOnDots = element.split(':');
-
+                        
+                        var job = {};
+                        
                         job.id = parseInt(splitOnDots[0], 10);
                         job.client = parseInt(splitOnDots[1], 10);
                         job.time = parseInt(splitOnDots[2], 10);
@@ -146,11 +146,20 @@
                             job.resources[i] = parseInt(job.resources[i], 10);
                         }
                         
-                        console.log(job);
+                        if(!jobs[job.client]) {
+                           jobs[job.client] = [];
+                        }
                         
-                        socket.emit('ScheduleJob', job);
-
+                        jobs[job.client].push(job);
+                        
                     });
+                    
+                    for(var i=1; i<jobs.length; i++){
+                        if(jobs[i]) {
+                            console.log(jobs[i]);
+                            socket.emit('ScheduleJob', jobs[i]);
+                        }
+                    }
                     
                     
                 });
@@ -204,6 +213,7 @@
             <hr>
         
             <h3>Schedule Job</h3>
+<!--
                 <p >Schedule Job on Clients</p> 
             
             
@@ -218,6 +228,7 @@
                     </tr> 
                 </tbody> 
             </table>
+-->
             
             <p >Combo Schedule</p> 
              
@@ -288,11 +299,25 @@
         function drawGraphs(data) {
             
             console.log('drawGraphs ', data);
+            
 
             var alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
-            var resources = data[0].resources;
+           
             
-            var links = []; 
+            var requestQueues = [];
+            
+            for(var i =0; i<data.length; i++){
+                requestQueues[alphabet[i]] = [];
+                
+                for(var j =0; j<data[i].tokenData[0].request_queue.length; j++){
+                    requestQueues[alphabet[i]].push(  alphabet[data[i].tokenData[0].request_queue[j]-1] );
+                }
+            }
+            
+            console.log(requestQueues);
+            
+            var resources = data[0].resources;
+            var links = [];
             
             for(var i =0; i<resources; i++) {
                 
@@ -317,22 +342,6 @@
                 
             }
             
-//            var links = [
-//              {source: "B_1", target: "A_1", type: "licensing"},
-//              {source: "C_1", target: "A_1", type: "licensing"},
-//              {source: "A_1", target: "A_1", type: "suit"},
-//              
-//              {source: "B_2", target: "A_2", type: "licensing"},
-//              {source: "C_2", target: "A_2", type: "licensing"},
-//              {source: "A_2", target: "A_2", type: "suit"},
-//              
-//                 
-//              {source: "B", target: "A", type: "licensing"},
-//              {source: "C", target: "A", type: "licensing"},
-//              {source: "A", target: "A", type: "suit"}
-//            ];
-
-            
             doActualDrawing(links);
             
         }
@@ -340,7 +349,7 @@
         function doActualDrawing(links) {
             
             if(d3.select("svg")) {
-                d3.select("svg").remove();
+                //d3.select("svg").remove();
             }
              
             var nodeset = {};
@@ -369,8 +378,8 @@
                 });
             });
 
-            var width = 1280,
-                height = 450;
+            var width = 1000,
+                height = 500;
 
             var force = d3.layout.force()
                 .nodes(nodes)
