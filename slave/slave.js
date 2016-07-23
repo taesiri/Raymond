@@ -47,6 +47,11 @@ OnScheduleJob = function(jobs) {
 }
 
 OnPrivilegeReceievd = function(privMessage) {
+    
+    if(process_privreseived) {
+            console.log("OnPrivilegeReceievd/OnPrivilegeReceievd PP Conflict!");
+    }
+    
     process_privreseived = true;
     console.log("OnPrivilegeReceievd ", privMessage)
     
@@ -56,8 +61,6 @@ OnPrivilegeReceievd = function(privMessage) {
     
     var token_id = privMessage.token_id;
     token_data[token_id].holder = slaveId;
-    
-    //console.log(token_data[token_id]);
     
     token_data[token_id].asked  = false;
     
@@ -69,7 +72,8 @@ OnPrivilegeReceievd = function(privMessage) {
             Checking = true;
             if(have_all_tokens()){
                 token_data[token_id].request_queue.shift();
-                RunJob();
+                if(IsIdle)
+                    RunJob();
             }else {
                 Checking = false;   
             }
@@ -94,8 +98,8 @@ OnRequestReceievd = function(requestMessage) {
     
     
     if( token_data[token_id].request_queue.indexOf(requestMessage.requester)!=-1){
-        console.log("---->>>>>> Something bad happened! 2");
-   
+        console.log("---->>>>>> BAD, recieved duplicated request from a node: ", requestMessage.requester);
+        console.log(token_data);
         return;
     }
 
@@ -111,6 +115,18 @@ OnRequestReceievd = function(requestMessage) {
             if(IsIdle && token_data[token_id].request_queue.length == 1) {
                 console.log("STRANGE FORWARD!");
                 ForwardPrivilege(token_id);
+            } else {
+                if(IsIdle && jobQ.length == 0) {
+                    console.log("not so STRANGE FORWARD!");
+                    
+                    if (token_data[token_id].request_queue[0] = slaveId) {
+                        token_data[token_id].request_queue.shift();
+                        
+                        if( token_data[token_id].request_queue.length>0){
+                            ForwardPrivilege(token_id);
+                        }
+                    }
+                }
             }
         }
         
@@ -171,8 +187,13 @@ function ForwardPrivilege(token_id) {
         sender: slaveId
     };
     
-    if(target_id==slaveId)
+    if(target_id==slaveId){
+        
         console.log("PANIC, target_id==slaveId");
+        token_data[token_id].request_queue.shift();
+        ForwardPrivilege(token_id);
+        return;
+    }
     
     console.log("Forwarding Privilege ", token_id, " to ", target_id);
 
@@ -190,8 +211,22 @@ function ForwardPrivilege(token_id) {
 }
 
 function RunJob() {
+   
+    if(!IsIdle){
+        console.log("PANIC", "isidle");
+    }
     
     if(jobQ.length <= 0){
+        
+        for(var i=0; i<token_data.lengt; i++){
+            if(token_data[i].holder == slaveId) { // im the holder!
+                if(token_data[i].request_queue[0] == slaveId){
+                    token_data[i].request_queue.shift();
+                    ForwardPrivilege(i);
+                }
+            }
+        }
+        
         return;
     }
     
@@ -226,7 +261,8 @@ function RunJob() {
             console.log("check if we can run another job");
             Checking = true;
             if(have_all_tokens()){
-                RunJob();
+                if(IsIdle)
+                    RunJob();
             } else {
                 Checking = false;
                 RequestResources();
@@ -277,6 +313,23 @@ OnDebugPrint = function() {
 
 OnStateRequested = function() {
     slave.emit('State', {'id' : slaveId, "tokenData": token_data, "resources" : numberOfResources});
+    
+    console.log(token_data);
+    if(jobQ.length>0){
+        console.log("current job, ", jobQ[0].id, "resources: ", jobQ[0].resources);
+    }
+    console.log("isIdle: ", IsIdle);
+    
+    
+    var token_in_site = [];
+    for(var i=0; i<token_data.length; i++){
+        if(token_data[i].holder == slaveId) {
+            token_in_site.push (i);
+        }
+    }
+    
+    console.log("tokens in site, ", token_in_site);
+    
 }
 
 function initializeSlave(id, n, r, h) {
